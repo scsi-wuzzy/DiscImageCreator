@@ -99,6 +99,18 @@ BOOL ScsiGetAddress(
 	return TRUE;
 }
 
+//Maintain a buffer, unknown to the rest of the code (so we don't have to change it), to speed up reads.
+//But, make sure *any and all* C2 errors, subchannel info, sense info, etc. is passed back to the original code
+//For *every single DeviceIoControl call* the original code makes
+BOOL DeviceIoControlBuffered(
+	PDEVICE pDevice,
+	SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb,
+	DWORD dwLength,
+	DWORD *dwReturned
+) {
+	return DeviceIoControl(pDevice->hDevice, IOCTL_SCSI_PASS_THROUGH_DIRECT, swb, dwLength, swb, dwLength, dwReturned, NULL);
+}
+
 BOOL ScsiPassThroughDirect(
 	PEXT_ARG pExtArg,
 	PDEVICE pDevice,
@@ -143,8 +155,9 @@ BOOL ScsiPassThroughDirect(
 	BOOL bRet = TRUE;
 	BOOL bNoSense = FALSE;
 	SetLastError(NO_ERROR);
-	if (!DeviceIoControl(pDevice->hDevice, IOCTL_SCSI_PASS_THROUGH_DIRECT,
-		&swb, dwLength, &swb, dwLength, &dwReturned, NULL)) {
+	if (!DeviceIoControlBuffered(pDevice, &swb, dwLength, &dwReturned)) {
+//	if (!DeviceIoControl(pDevice->hDevice, IOCTL_SCSI_PASS_THROUGH_DIRECT,
+//		&swb, dwLength, &swb, dwLength, &dwReturned, NULL)) {
 		OutputLastErrorNumAndString(pszFuncName, lLineNum);
 		bRet = FALSE;
 		if (!pExtArg->byScanProtectViaFile && !_tcscmp(_T("SetDiscSpeed"), pszFuncName) &&
