@@ -108,6 +108,30 @@ BOOL DeviceIoControlBuffered(
 	DWORD dwLength,
 	DWORD *dwReturned
 ) {
+	static const INT oldSwbNum = 2;
+	static SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER oldSwb[oldSwbNum];
+	//Is this necessary? Surely a length 0 would crash / be invalid for DeviceIoControl command anyway?
+	BYTE length = swb->ScsiPassThroughDirect.Length;
+
+	//Check Cdb to make sure it's a 0xd8 command -- if not, no buffering. Just do DeviceIoControl
+	if (length && swb->ScsiPassThroughDirect.Cdb[0] != 0xd8)
+	{
+		memset(oldSwb, 0, sizeof(SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER));
+		return DeviceIoControl(pDevice->hDevice, IOCTL_SCSI_PASS_THROUGH_DIRECT, swb, dwLength, swb, dwLength, dwReturned, NULL);
+	}
+
+	//Otherwise, it's a 0xd8, and we think about buffering. Only do so if we already have oldSwbNum valid previous SWBs
+	for (UINT i = 0; i < oldSwbNum; i++)
+	{
+		if (oldSwb[i].ScsiPassThroughDirect.Cdb[0] != 0xd8)
+		{
+			oldSwb[i] = *swb;
+			return DeviceIoControl(pDevice->hDevice, IOCTL_SCSI_PASS_THROUGH_DIRECT, swb, dwLength, swb, dwLength, dwReturned, NULL);
+		}
+	}
+
+	//If we made it here, then we're issuing a 0xd8 and we have a set of previous ones. Now, check for incremental addresses to see if we're doing
+	//a contiguous forward read.
 	return DeviceIoControl(pDevice->hDevice, IOCTL_SCSI_PASS_THROUGH_DIRECT, swb, dwLength, swb, dwLength, dwReturned, NULL);
 }
 
